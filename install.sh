@@ -11,9 +11,20 @@ if [ "$EUID" -eq 0 ]; then
     exit 1
 fi
 
-# Install Python dependencies
-echo "Installing Python dependencies..."
-pip3 install -r requirements.txt
+# Check for Python virtual environment
+echo "Setting up Python environment..."
+
+if [ -d "venv" ]; then
+    echo "Using existing virtual environment..."
+    source venv/bin/activate
+    pip install -r requirements.txt
+else
+    echo "Creating virtual environment..."
+    python3 -m venv venv
+    source venv/bin/activate
+    pip install -r requirements.txt
+    echo "Virtual environment created. Activate it with: source venv/bin/activate"
+fi
 
 # Create udev rule for Asus keyboard backlight
 echo "Setting up udev rules for Asus keyboard backlight..."
@@ -53,11 +64,41 @@ fi
 chmod +x viper-lighting.py
 chmod +x tui.py
 
+# Create wrapper scripts if using virtual environment
+if [ -d "venv" ]; then
+    echo "Creating wrapper scripts for virtual environment..."
+    
+    # Create viper-lighting wrapper
+    cat > viper-lighting << 'EOF'
+#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/venv/bin/activate"
+python3 "$SCRIPT_DIR/viper-lighting.py" "$@"
+EOF
+    
+    # Create tui wrapper
+    cat > tui << 'EOF'
+#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/venv/bin/activate"
+python3 "$SCRIPT_DIR/tui.py" "$@"
+EOF
+    
+    chmod +x viper-lighting
+    chmod +x tui
+    
+    echo "Wrapper scripts created. You can now run './viper-lighting' and './tui'."
+fi
+
 # Create symlink in /usr/local/bin if requested
 read -p "Create symlink in /usr/local/bin? (y/n): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    sudo ln -sf "$(pwd)/viper-lighting.py" /usr/local/bin/viper-lighting
+    if [ -f "viper-lighting" ]; then
+        sudo ln -sf "$(pwd)/viper-lighting" /usr/local/bin/viper-lighting
+    else
+        sudo ln -sf "$(pwd)/viper-lighting.py" /usr/local/bin/viper-lighting
+    fi
     echo "Symlink created. You can now run 'viper-lighting' from anywhere."
 fi
 
@@ -65,10 +106,17 @@ echo ""
 echo "Installation complete!"
 echo ""
 echo "To use Viper Lighting:"
-echo "  CLI: ./viper-lighting.py --help"
-echo "  TUI: ./tui.py"
+if [ -f "viper-lighting" ]; then
+    echo "  CLI: ./viper-lighting --help"
+    echo "  TUI: ./tui"
+else
+    echo "  CLI: ./viper-lighting.py --help"
+    echo "  TUI: ./tui.py"
+fi
 echo ""
-echo "If you installed the symlink:"
-echo "  CLI: viper-lighting --help"
+if [ -d "venv" ]; then
+    echo "Virtual environment is set up. Activate it with: source venv/bin/activate"
+    echo "Or use the wrapper scripts: ./viper-lighting and ./tui"
+fi
 echo ""
 echo "Note: You may need to log out and back in for group changes to take effect."
